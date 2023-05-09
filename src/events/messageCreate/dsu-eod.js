@@ -1,7 +1,7 @@
 
 const dotenv = require('dotenv');
 const { initializeApp } = require('firebase/app');
-const { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, setDoc} = require('firebase/firestore');
+const { getFirestore, collection, doc, setDoc, updateDoc, getDocs, query, where, onSnapshot} = require('firebase/firestore');
 const { Client, Message, Guild} = require('discord.js')
 
 let dsuEodChannelId = 1104981946888617987;
@@ -28,33 +28,118 @@ module.exports = async (client, message) => {
     initializeApp(firebaseConfig)
     const db = getFirestore()
     
-
-    
+    //Checks if the author is a bot
     if (!message.inGuild() || message.author.bot) return;
 
     //DSU
     if (message.content.startsWith('DSU') && (message.channelId == dsuEodChannelId)) {
-        const colRef = collection(db, 'DSU');
-        //fetch
+
+        const colRef = await collection(db, 'DSU');
+        
+        //query
+        var dateToday = new Date(message.createdTimestamp).toDateString();
+        const dateQuery = await query(colRef, where("date", "==", dateToday), where("user_id", "==", message.author.id))
+        
+        console.log(1)
+        // var records = []
+        // onSnapshot(dateQuery, (snapshot) => {
+            
+        //     snapshot.docs.forEach(doc => {
+        //       records.push({ ...doc.data(), id: doc.id })
+        //       //console.log(records)
+        //     })
+        //   })
+        // let records = []
+        //     await getDocs(colRef)
+        //     .then((snapshot) => {
+                
+        //         snapshot.docs.forEach((doc) => {
+        //             dsu.push({ ...doc.data(), id: doc.id })
+        //         })
+        //     })
+        //     .catch( err => {
+        //         console.log(err.message)
+        //     })
+        if (records.length == 0) {
+
+            setDoc(doc(colRef), {
+                date: new Date(message.createdTimestamp).toDateString(),
+                user: message.author.username,
+                user_id: message.author.id,
+                time: message.createdTimestamp,
+                message: message.content,
+            });
+
+        }
+        else {
+            
+            let dsu = []
+            await getDocs(colRef)
+            .then((snapshot) => {
+                
+                snapshot.docs.forEach((doc) => {
+                    dsu.push({ ...doc.data(), id: doc.id })
+                })
+            })
+            .catch( err => {
+                console.log(err.message)
+            })
+            console.log(typeof records.toString())
+            recordID = records.map((entry) => {
+                console.log(entry.id)
+                return entry.id
+            })
+
+            const docRef = doc(db, 'DSU', recordID.toString())
+            updateDoc (docRef, {
+                message: message.content
+            })
+            console.log("Update Record")
+        }
+        let dsu = []
         getDocs(colRef)
         .then((snapshot) => {
-            let dsu = []
+            
             snapshot.docs.forEach((doc) => {
                 dsu.push({ ...doc.data(), id: doc.id })
             })
-            console.log(dsu)
+            //console.log(dsu)
         })
         .catch( err => {
             console.log(err.message)
         })
-       
+
+
         
-        setDoc(doc(colRef), {
-            user: message.author.username,
-            user_id: message.author.id,
-            time: message.createdTimestamp,
-            message: message.content,
-          });
+        // if (dateChecker) {
+            // setDoc(doc(colRef), {
+            //     date: new Date(message.createdTimestamp).toDateString(),
+            //     user: message.author.username,
+            //     user_id: message.author.id,
+            //     time: message.createdTimestamp,
+            //     message: message.content,
+            // });
+        // }
+        // else {
+        //     const docRef = doc(db, 'DSU', message.author.id)
+        //     updateDoc (docRef, {
+        //         message: message.content
+        //     })
+        // }
+
+        //fetch
+        // getDocs(colRef)
+        // .then((snapshot) => {
+        //     let dsu = []
+        //     snapshot.docs.forEach((doc) => {
+        //         dsu.push({ ...doc.data(), id: doc.id })
+        //     })
+        //     console.log(dsu)
+        // })
+        // .catch( err => {
+        //     console.log(err.message)
+        // })
+       
     }
 
     //EOD
