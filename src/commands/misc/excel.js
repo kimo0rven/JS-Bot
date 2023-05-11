@@ -1,47 +1,108 @@
-const axios  = require('axios');
-const dotenv = require('dotenv');
+const axios = require("axios");
+const dotenv = require("dotenv");
+const moment = require("moment");
+const re = /ab+c/;
+const { initializeApp } = require("firebase/app");
+const { getFirestore, collection, doc, getDocs, updateDoc } = require("firebase/firestore");
+const { ApplicationCommandOptionType } = require("discord.js");
 dotenv.config();
 
+const firebaseConfig = {
+  apiKey: process.env.apiKey,
+  authDomain: "discord-js-e4048.firebaseapp.com",
+  databaseURL: "https://discord-js-e4048-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "discord-js-e4048",
+  storageBucket: "discord-js-e4048.appspot.com",
+  messagingSenderId: "964505542026",
+  measurementId: "G-DQ0574RP9G",
+  appId: process.env.appId,
+};
+
 module.exports = {
-	name: "generate",
-	description: "Generate an Zoho Sheet for DSU/EOD",
-	// devOnly: Boolean,
-	//testOnly: true,
-	// options: Object[],
-	// deleted: Boolean,
+  name: "generate",
+  description: "Generate a Zoho Sheet for DSU/EOD",
+  options: [
+    {
+      name: "start_date",
+      description: "Enter a valid date (eg May 1, 2023)",
+      required: true,
+      type: ApplicationCommandOptionType.String,
+    },
+    {
+      name: "end_date",
+      description: "Enter a valid date (eg May 2, 2023)",
+      required: true,
+      type: ApplicationCommandOptionType.String,
+    },
+  ],
 
-	callback: async (client, interaction) => {
-		await interaction.deferReply();
+  callback: async (client, interaction) => {
+    //await interaction.deferReply();
 
-		const reply = await interaction.fetchReply();
-		var accessTokenResponse = null
+    initializeApp(firebaseConfig);
+    const db = getFirestore();
 
-		const url = "https://sheet.zoho.com/api/v2/15vy0d864d94014f7412aacaded4cd0da1ce7?method=worksheet.insert&worksheet_name=test 3"
+    const colRef = collection(db, "tokens");
+    const tokens = [];
 
-		const headers = {
-			'Authorization': 'Zoho-oauthtoken ' + process.env.access_token 
-		}
+    async function executeApiCall(token) {
+      const accessmethod = "worksheet.list";
+      const accessUrl = `https://sheet.zoho.com/api/v2/15vy0d864d94014f7412aacaded4cd0da1ce7?method=${accessmethod}`;
+      var response = null;
+      try {
+        const headers = { Authorization: `Zoho-oauthtoken ${token}` };
+        response = await axios.post(accessUrl, null, { headers });
+        console.log(response.data);
+      } catch (error) {
+        console.log(error.response.data);
+      }
+      return response.data;
+    }
 
-		axios.post("https://accounts.zoho.com/oauth/v3/device/setCode?devcode=T1RUTi05MTg2")
-			.then( response => {
-				console.log(response.data)
-			})
-			.catch ( error => {
-				console.log(error)
-			})
-		// axios.post(url, null, {headers})
-		// 	.then( response => {
-		// 		accessTokenResponse = response.data
-		// 		console.log(response.data)
-		// 	})
-		// 	.catch(error => {
-		// 		console.log(error)
-		// 		axios.post("https://accounts.zoho.com/oauth/v3/device/token?client_id=1004.2UHN26P51ESYSZY3YT57MBIRUJCFBH&grant_type=device_token&client_secret=7f11e3ffe3cbcbca567555bd35acad03c3d9bda8a2&code=1004.dee0a2971c3bc4407e1c50c782cca58c.02f36a148a68f6db873a8e680fe6cad2")
-		// 			.then( response => {
-		// 				console.log(response)
-		// 			})
-		// 	})
-	interaction.editReply(process.env.refresh_token)
-	},
-}
+    var startDate = interaction.options.get("start_date").value;
+    var endDate = interaction.options.get("end_date").value;
 
+    const dateFormat =
+      /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s\d{1,2},\s\d{4}$/;
+
+    const isStartDate = dateFormat.test(startDate);
+    const isEndDate = dateFormat.test(endDate);
+
+    if (!isStartDate) {
+      interaction.reply("Please enter a valid Start Date format");
+    } else if (!isEndDate) {
+      interaction.reply("Please enter a valid End Date format");
+    } else {
+      interaction.reply(`${startDate} ${endDate} ${isStartDate} ${isEndDate}`);
+
+      //dateToday = moment().format("LL");
+
+      const snapshot = await getDocs(colRef);
+      snapshot.docs.forEach((doc) => {
+        tokens.push({ ...doc.data(), id: doc.id });
+      });
+
+      const { Access_Token, Refresh_Token, client_id, client_secret } = tokens[0];
+
+      const refreshUrl = `https://accounts.zoho.com/oauth/v2/token?grant_type=refresh_token&client_id=${client_id}&client_secret=${client_secret}&refresh_token=${Refresh_Token}`;
+
+      try {
+        //Try to check if the access token is still valid
+        await executeApiCall(Access_Token);
+        console.log("Token is valid");
+      } catch (error) {
+        console.log("Token is invalid, trying to renew token");
+        try {
+          const generateAccessToken = await axios.post(refreshUrl);
+
+          const docRef = doc(db, "tokens", "Zoho");
+          await updateDoc(docRef, { Access_Token: generateAccessToken.data.access_token });
+
+          await executeApiCall(generateAccessToken.data.access_token);
+        } catch (error) {
+          console.log(error.response.data);
+        }
+      }
+    }
+  },
+};
