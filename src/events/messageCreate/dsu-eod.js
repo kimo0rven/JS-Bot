@@ -1,22 +1,14 @@
 const dotenv = require("dotenv");
+const {Client, Message} = require("discord.js");
 const {initializeApp} = require("firebase/app");
-const {getFirestore, collection, doc, setDoc, updateDoc, getDocs, query, where, onSnapshot} = require("firebase/firestore");
-const {Client, Message, Guild} = require("discord.js");
+const {getFirestore, collection, doc, setDoc, updateDoc, getDocs, query, where} = require("firebase/firestore");
+const {firebaseConfig} = require("../../configs/config");
+const {DSU_EOD_Channel} = require("../../configs/config.json");
 
-const {DSU_EOD_Channel} = require("../../../config.json");
-let dsuEodChannelId = DSU_EOD_Channel;
 dotenv.config();
+initializeApp(firebaseConfig);
+const db = getFirestore();
 //
-const firebaseConfig = {
-	apiKey: process.env.apiKey,
-	authDomain: "discord-js-e4048.firebaseapp.com",
-	databaseURL: "https://discord-js-e4048-default-rtdb.asia-southeast1.firebasedatabase.app",
-	projectId: "discord-js-e4048",
-	storageBucket: "discord-js-e4048.appspot.com",
-	messagingSenderId: "964505542026",
-	measurementId: "G-DQ0574RP9G",
-	appId: process.env.appId,
-};
 /**
  *
  * @param { Client } client
@@ -24,17 +16,19 @@ const firebaseConfig = {
  */
 
 module.exports = async (client, message) => {
-	initializeApp(firebaseConfig);
-	const db = getFirestore();
-
 	if (!message.inGuild() || message.author.bot) return;
 
-	//DSU
-	if (message.content.startsWith("DSU") && message.channelId == dsuEodChannelId) {
-		const colRef = collection(db, "DSU");
+	function formatDate(date) {
+		const dateFormatted = new Date(date).toDateString();
+		var newDateFormatted = dateFormatted.substring(4, dateFormatted.length);
+		return newDateFormatted;
+	}
+
+	async function createRecordInFireBase(type) {
+		const colRef = collection(db, type);
 
 		//query
-		var dateToday = new Date(message.createdTimestamp).toDateString();
+		var dateToday = formatDate(message.createdTimestamp);
 		const dateQuery = query(colRef, where("date", "==", dateToday), where("user_id", "==", message.author.id));
 
 		var recordsList = [];
@@ -44,8 +38,12 @@ module.exports = async (client, message) => {
 		});
 
 		if (recordsList.length == 0) {
+			const dateFormatted = new Date(message.createdTimestamp).toDateString();
+			var newDateFormatted = dateFormatted.substring(4, dateFormatted.length);
+			console.log(dateToday + " " + newDateFormatted);
+			console.log(formatDate(message.createdTimestamp));
 			await setDoc(doc(colRef), {
-				date: new Date(message.createdTimestamp).toDateString(),
+				date: formatDate(message.createdTimestamp),
 				user: message.author.username,
 				user_id: message.author.id,
 				time: message.createdTimestamp,
@@ -68,56 +66,19 @@ module.exports = async (client, message) => {
 				return entry.id;
 			});
 
-			const docRef = doc(db, "DSU", recordID.toString());
+			const docRef = doc(db, type, recordID.toString());
 			updateDoc(docRef, {
 				message: message.content,
 			});
 		}
 	}
 
-	//EOD
-	if (message.content.startsWith("EOD") && message.channelId == dsuEodChannelId) {
-		const colRef = collection(db, "EOD");
+	//DSU
+	if (message.content.startsWith("DSU") && message.channelId == DSU_EOD_Channel) {
+		await createRecordInFireBase("DSU");
+	}
 
-		//query
-		var dateToday = new Date(message.createdTimestamp).toDateString();
-		const dateQuery = query(colRef, where("date", "==", dateToday), where("user_id", "==", message.author.id));
-
-		var recordsList = [];
-		const records = await getDocs(dateQuery);
-		records.forEach((doc) => {
-			recordsList.push({...doc.data(), id: doc.id});
-		});
-
-		if (recordsList.length == 0) {
-			await setDoc(doc(colRef), {
-				date: new Date(message.createdTimestamp).toDateString(),
-				user: message.author.username,
-				user_id: message.author.id,
-				time: message.createdTimestamp,
-				message: message.content,
-				message_id: message.id,
-			});
-		} else {
-			var eod = [];
-			await getDocs(colRef)
-				.then((snapshot) => {
-					snapshot.docs.forEach((doc) => {
-						eod.push({...doc.data(), id: doc.id});
-					});
-				})
-				.catch((err) => {
-					console.log(err.message);
-				});
-
-			recordID = recordsList.map((entry) => {
-				return entry.id;
-			});
-
-			const docRef = doc(db, "EOD", recordID.toString());
-			updateDoc(docRef, {
-				message: message.content,
-			});
-		}
+	if (message.content.startsWith("EOD") && message.channelId == DSU_EOD_Channel) {
+		await createRecordInFireBase("EOD");
 	}
 };
